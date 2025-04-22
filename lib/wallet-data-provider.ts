@@ -82,16 +82,40 @@ export class WalletDataProvider {
    * Get SOL balance with error handling
    */
   static async getSolBalance(walletAddress: string): Promise<number> {
-    if (!walletAddress) return 0;
-    
+    if (!walletAddress) {
+      console.warn('getSolBalance called with empty wallet address');
+      return 0;
+    }
+
     try {
+      // Validate wallet address format
+      if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(walletAddress)) {
+        throw new Error('Invalid Solana wallet address format');
+      }
+
       const pubkey = new PublicKey(walletAddress);
-      // Use direct connection with confirmed commitment for reliable balance
       const connection = connectionManager.getConnection();
+      
+      // Use confirmed commitment for reliable balance
       const balance = await connection.getBalance(pubkey, 'confirmed');
+      
+      if (balance === null) {
+        throw new Error('Failed to get balance: null response');
+      }
+      
       return balance / LAMPORTS_PER_SOL;
     } catch (error) {
       console.error("Failed to fetch SOL balance:", error);
+      
+      // Handle specific error cases
+      if (error instanceof Error) {
+        if (error.message.includes('Invalid public key')) {
+          console.error('Invalid wallet address provided');
+        } else if (error.message.includes('connection')) {
+          console.error('Network connection error while fetching balance');
+        }
+      }
+      
       return 0;
     }
   }

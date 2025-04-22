@@ -6,7 +6,8 @@ import { aiModel } from './services/ai-model-integration';
 import { knowledgeService } from './services/knowledge-service';
 import { marketIntelligence } from './services/market-intelligence-service';
 import { aiTrainingAdapter } from './services/ai-training-adapter';
-import { ENHANCED_TOKEN_INFO } from './enhanced-token-database';
+import { AIMessage } from "./utils";
+import { ENHANCED_TOKEN_INFO as IMPORTED_TOKEN_INFO, TokenInfo } from "./token-info";
 import { resetConversationContext } from './personality/natural-language-processor';
 import { formatWithPersonality, formatListWithPersonality } from './personality/ai-personality';
 import { humanizeResponse, handleSmallTalk } from './personality/human-responses';
@@ -19,6 +20,144 @@ export interface AISystemResponse {
   suggestions?: string[];
   data?: any;
 }
+
+interface AIResponse {
+  message: string;
+  intent?: string;
+  data?: any;
+}
+
+type ExpertiseLevel = 'beginner' | 'intermediate' | 'advanced';
+
+interface UserProfile {
+  walletAddress?: string;
+  preferences?: Record<string, any>;
+  history?: AIMessage[];
+  expertiseLevel?: ExpertiseLevel;
+  lastUpdate?: Date;
+}
+
+interface WalletBalance {
+  token: string;
+  amount: number;
+}
+
+export class AIContextManager {
+  private sessionId: string;
+  private context: Map<string, any>;
+  private messages: AIMessage[];
+  private userProfile: UserProfile;
+  private walletAddress: string | null = null;
+  private retryCount: number = 0;
+  private maxRetries: number = 3;
+  private balanceCache: Map<string, number> = new Map();
+
+  constructor() {
+    this.sessionId = Math.random().toString(36).substring(7);
+    this.context = new Map();
+    this.messages = [];
+    this.userProfile = {
+      expertiseLevel: 'beginner',
+      lastUpdate: new Date()
+    };
+  }
+
+  async prefetchWalletData(): Promise<void> {
+    if (this.walletAddress) {
+      // Implementation would go here
+      // For now, just clear the cache
+      this.clearBalanceCache();
+    }
+  }
+
+  async getWalletBalances(): Promise<WalletBalance[]> {
+    if (!this.walletAddress) {
+      return [];
+    }
+    // Implementation would go here
+    return [];
+  }
+
+  detectIntent(message: string): string {
+    // Simple intent detection logic
+    if (message.toLowerCase().includes('balance')) {
+      return 'CHECK_BALANCE';
+    }
+    return 'GENERAL_QUERY';
+  }
+
+  updateUserProfile(updates: Partial<UserProfile>): void {
+    this.userProfile = {
+      ...this.userProfile,
+      ...updates,
+      lastUpdate: new Date()
+    };
+  }
+
+  getSessionId(): string {
+    return this.sessionId;
+  }
+
+  initializeWithWalletAddress(address: string | null): void {
+    this.walletAddress = address;
+    this.userProfile.walletAddress = address || undefined;
+  }
+
+  addMessage(message: AIMessage): void {
+    this.messages.push(message);
+  }
+
+  setWalletAddress(address: string | null): void {
+    this.walletAddress = address;
+    this.userProfile.walletAddress = address || undefined;
+  }
+
+  setExpertiseLevel(level: ExpertiseLevel): void {
+    this.userProfile.expertiseLevel = level;
+  }
+
+  generateAIContext(): Record<string, any> {
+    return {
+      sessionId: this.sessionId,
+      messages: this.messages,
+      userProfile: this.userProfile,
+    };
+  }
+
+  getUserProfile(): UserProfile {
+    return this.userProfile;
+  }
+
+  getMessages(): AIMessage[] {
+    return this.messages;
+  }
+
+  clearBalanceCache(): void {
+    this.balanceCache.clear();
+  }
+
+  getWalletAddress(): string | null {
+    return this.walletAddress;
+  }
+
+  incrementRetryCount(): void {
+    this.retryCount++;
+  }
+
+  resetRetryCount(): void {
+    this.retryCount = 0;
+  }
+
+  hasExceededRetries(): boolean {
+    return this.retryCount >= this.maxRetries;
+  }
+}
+
+// Use the imported token info
+export const ENHANCED_TOKEN_INFO = IMPORTED_TOKEN_INFO;
+
+// Create a single instance of AIContextManager
+export const aiContextManager = new AIContextManager();
 
 /**
  * Advanced AI System class that orchestrates all AI components
@@ -248,7 +387,8 @@ export class AdvancedAISystem {
     
     // Check for token names
     for (const [symbol, info] of Object.entries(ENHANCED_TOKEN_INFO)) {
-      if (normalizedMessage.includes(info.name.toLowerCase()) && !tokens.includes(symbol)) {
+      const tokenInfo = info as TokenInfo;
+      if (normalizedMessage.includes(tokenInfo.name.toLowerCase()) && !tokens.includes(symbol)) {
         tokens.push(symbol);
       }
     }

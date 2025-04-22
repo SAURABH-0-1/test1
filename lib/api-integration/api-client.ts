@@ -23,6 +23,7 @@ export async function fetchWithRetry<T>(
         ...options,
         headers: {
           'Accept': 'application/json',
+          'Content-Type': 'application/json',
           ...options.headers,
         }
       };
@@ -39,7 +40,12 @@ export async function fetchWithRetry<T>(
       }
       
       if (!response.ok) {
-        throw new Error(`API request failed with status ${response.status}: ${response.statusText}`);
+        const errorData = await response.json().catch(() => null);
+        throw new Error(
+          `API request failed with status ${response.status}: ${response.statusText}${
+            errorData ? ` - ${JSON.stringify(errorData)}` : ''
+          }`
+        );
       }
       
       const data = await response.json() as T;
@@ -50,12 +56,12 @@ export async function fetchWithRetry<T>(
       }
       
       return data;
-    } catch (error: any) {
-      lastError = error;
+    } catch (error: unknown) {
+      lastError = error instanceof Error ? error : new Error('Unknown error occurred');
       
       if (attempt < retries - 1) {
         const delay = Math.pow(2, attempt) * 1000;
-        console.warn(`API request failed. Attempt ${attempt + 1}/${retries}. Retrying in ${delay}ms...`, error.message);
+        console.warn(`API request failed. Attempt ${attempt + 1}/${retries}. Retrying in ${delay}ms...`, lastError.message);
         await new Promise(resolve => setTimeout(resolve, delay));
       }
     }

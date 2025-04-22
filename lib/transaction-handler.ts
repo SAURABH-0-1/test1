@@ -46,20 +46,47 @@ export class TransactionHandler {
    * Returns false for common errors we want to suppress
    */
   private shouldShowError(error: any): boolean {
-    // Suppress specific errors
-    const suppressedErrors = [
-      'block height exceeded',
-      'expired signature',
-      'blockhash not found',
-      'timed out',
-      'Transaction simulation failed'
-    ];
-
     if (!error) return false;
     
     const errorString = error.toString().toLowerCase();
     
-    return !suppressedErrors.some(suppressed => errorString.includes(suppressed.toLowerCase()));
+    // Define error categories
+    const suppressedErrors = {
+      network: [
+        'block height exceeded',
+        'expired signature',
+        'blockhash not found',
+        'timed out',
+        'connection refused',
+        'network error'
+      ],
+      simulation: [
+        'transaction simulation failed',
+        'insufficient funds',
+        'invalid account data'
+      ],
+      validation: [
+        'invalid signature',
+        'invalid transaction',
+        'invalid account'
+      ]
+    };
+    
+    // Check if error matches any suppressed category
+    const isSuppressed = Object.values(suppressedErrors)
+      .flat()
+      .some(suppressed => errorString.includes(suppressed.toLowerCase()));
+      
+    // Log error category for debugging
+    if (isSuppressed) {
+      const category = Object.entries(suppressedErrors).find(([_, errors]) =>
+        errors.some(e => errorString.includes(e.toLowerCase()))
+      )?.[0] || 'unknown';
+      
+      console.warn(`Suppressed ${category} error:`, error);
+    }
+    
+    return !isSuppressed;
   }
 
   /**
@@ -68,7 +95,7 @@ export class TransactionHandler {
   async sendAndConfirmTransaction(
     transaction: Transaction,
     signers?: any[],
-    options?: SendOptions
+    options?: SendOptions & { commitment?: Commitment }
   ): Promise<TransactionResult> {
     try {
       // Send transaction
@@ -99,17 +126,17 @@ export class TransactionHandler {
       try {
         const blockTime = await this.getTransactionBlockTime(signature);
         return { success: true, signature, blockTime };
-      } catch (timeError) {
+      } catch (timeError: unknown) {
         // Even if getting block time fails, transaction is still successful
         this.logErrorSilently(timeError, 'Getting block time');
         return { success: true, signature };
       }
-    } catch (error) {
+    } catch (error: unknown) {
       this.logErrorSilently(error, 'Sending transaction');
       return {
         success: false,
         error,
-        errorCode: error.code || 'Unknown error'
+        errorCode: error instanceof Error ? error.message : 'Unknown error'
       };
     }
   }
@@ -121,8 +148,9 @@ export class TransactionHandler {
     try {
       const transaction = await this.connection.getTransaction(signature);
       return transaction?.blockTime || undefined;
-    } catch (error) {
-      this.logErrorSilently(error, 'Getting transaction');
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      this.logErrorSilently(errorMessage, 'Getting transaction');
       return undefined;
     }
   }
