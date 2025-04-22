@@ -126,6 +126,15 @@ const ChatMessage = ({ message, isLast }: { message: AIMessage; isLast: boolean 
   )
 }
 
+// Add type definition for the context
+type ParseUserIntentContext = {
+  walletConnected: boolean;
+  walletAddress: string | null;
+  balance: number;
+  marketData?: any[];
+  lastMarketUpdate?: string | null;
+};
+
 // Main ChatInterface component
 export function ChatInterface() {
   const wallet = useWallet()
@@ -614,13 +623,15 @@ export function ChatInterface() {
       }
 
       // If not a market query or no market data available, proceed with the regular AI
-      const aiResponse = await parseUserIntent(userMessage, {
+      const context: ParseUserIntentContext = {
         walletConnected: wallet.connected,
         walletAddress: wallet.publicKey?.toString() || null,
         balance: walletData.solBalance || 0,
-        marketData: marketData, // Pass market data to the AI
+        marketData: marketData,
         lastMarketUpdate: lastMarketUpdate ? lastMarketUpdate.toISOString() : null,
-      })
+      };
+      
+      const aiResponse = await parseUserIntent(userMessage, context);
 
       // Handle AI response
       handleAIResponse(aiResponse)

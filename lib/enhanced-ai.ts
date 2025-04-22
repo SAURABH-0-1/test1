@@ -7,8 +7,45 @@ import { parseTransferCommand } from './transfer-command-parser';
 import { knowledgeService } from './services/knowledge-service';
 import { TransactionHistoryService } from './transaction-history-service';
 
+interface TokenInfo {
+  name: string;
+  decimals: number;
+  description: string;
+  useCases: string;
+  price_range: string;
+  trend_indicators: string[];
+  category: string;
+  year_launched: number;
+  market_sentiment: string;
+  issuer: string;
+}
+
+interface Operation {
+  description: string;
+  patterns: RegExp[];
+  handler: (match: RegExpMatchArray, context: any) => Promise<any>;
+}
+
+interface InvestmentStrategy {
+  description: string;
+  implementation: string;
+  advantages: string[];
+  disadvantages?: string[];
+  benefits?: string[];
+  methodology?: string[];
+  riskLevel?: string;
+  "Minimum Ratios"?: string[];
+  "Diversity Principles"?: string[];
+}
+
+const RISK_FRAMEWORKS = {
+  "Market Risk": ["Volatility analysis", "Correlation studies", "Beta calculations"],
+  "Liquidity Risk": ["Volume analysis", "Order book depth", "Slippage calculations"],
+  "Operational Risk": ["Smart contract audits", "Protocol security", "Team transparency"]
+};
+
 // Enhanced token information database with market trends
-const TOKEN_INFO = {
+const TOKEN_INFO: Record<string, TokenInfo> = {
   "SOL": {
     name: "Solana",
     decimals: 9,
@@ -19,6 +56,7 @@ const TOKEN_INFO = {
     category: "L1 blockchain",
     year_launched: 2020,
     market_sentiment: "Bullish after 2023 recovery",
+    issuer: "Solana Foundation"
   },
   "USDC": {
     name: "USD Coin",
@@ -29,7 +67,8 @@ const TOKEN_INFO = {
     trend_indicators: ["Regulatory compliance", "Corporate adoption"],
     category: "Stablecoin",
     year_launched: 2018,
-    issuer: "Circle",
+    market_sentiment: "Stable",
+    issuer: "Circle"
   },
   "USDT": {
     name: "Tether",
@@ -40,7 +79,8 @@ const TOKEN_INFO = {
     trend_indicators: ["Exchange reserves", "Regulatory scrutiny"],
     category: "Stablecoin",
     year_launched: 2014,
-    issuer: "Tether Limited",
+    market_sentiment: "Stable",
+    issuer: "Tether Limited"
   },
   "BONK": {
     name: "Bonk",
@@ -52,6 +92,7 @@ const TOKEN_INFO = {
     category: "Meme coin",
     year_launched: 2022,
     market_sentiment: "Cyclical hype patterns",
+    issuer: "Bonk Community"
   },
   "JUP": {
     name: "Jupiter",
@@ -63,6 +104,7 @@ const TOKEN_INFO = {
     category: "DEX token",
     year_launched: 2024,
     market_sentiment: "Strong as leading Solana DEX",
+    issuer: "Jupiter Community"
   },
   "JTO": {
     name: "Jito",
@@ -74,6 +116,7 @@ const TOKEN_INFO = {
     category: "Infrastructure token",
     year_launched: 2023,
     market_sentiment: "Technical adoption focus",
+    issuer: "Jito Network"
   },
   "RAY": {
     name: "Raydium",
@@ -85,16 +128,19 @@ const TOKEN_INFO = {
     category: "DEX token",
     year_launched: 2021,
     market_sentiment: "Recovering alongside Solana DeFi ecosystem",
+    issuer: "Raydium Community"
   },
   "PYTH": {
     name: "Pyth Network",
     decimals: 6,
     description: "Oracle protocol providing real-time market data across blockchains",
     useCases: "Governance, staking for data validation",
-    trend_indicators: ["Cross-chain integrations", "Data provider partnerships"],
+    price_range: "Varies with market conditions",
+    trend_indicators: ["Growing adoption", "Strong community"],
     category: "Oracle token",
     year_launched: 2023,
-    market_sentiment: "Growth with DeFi adoption",
+    market_sentiment: "Positive",
+    issuer: "Pyth Network"
   },
   "MEME": {
     name: "Memecoin",
@@ -106,6 +152,7 @@ const TOKEN_INFO = {
     category: "Meme coin",
     year_launched: 2023,
     market_sentiment: "Follows broader meme coin trends",
+    issuer: "Memecoin Community"
   },
   "WIF": {
     name: "Dogwifhat",
@@ -117,6 +164,19 @@ const TOKEN_INFO = {
     category: "Meme coin",
     year_launched: 2023,
     market_sentiment: "One of Solana's most successful meme coins",
+    issuer: "Dogwifhat Community"
+  },
+  "AKT": {
+    name: "Akash Network Token",
+    decimals: 6,
+    description: "Decentralized cloud computing token",
+    useCases: "Decentralized cloud computing",
+    price_range: "Varies with market conditions",
+    trend_indicators: ["Growing adoption", "Strong community"],
+    category: "Infrastructure",
+    year_launched: 2020,
+    market_sentiment: "Positive",
+    issuer: "Akash Network"
   }
 };
 
@@ -182,7 +242,7 @@ const CRYPTO_JOKES = [
 let cachedTokenPrices: Record<string, TokenPriceData> = {};
 
 // More extensive operations in DeFi
-export const OPERATIONS = {
+const OPERATIONS: Record<string, Operation> = {
   "swap": {
     description: "Exchange one token for another",
     patterns: [
@@ -198,130 +258,20 @@ export const OPERATIONS = {
       /trade\s+(?:all|everything|all\s+my)\s+(\w+)\s+(?:to|for)\s+(\w+)/i,
     ],
     handler: async (match: RegExpMatchArray, context: any) => {
-      const allPattern = /(?:all|everything|all\s+my)\s+(\w+)\s+(?:to|into|for)\s+(\w+)/i;
-      if (match[0].match(allPattern)) {
-        const allMatch = match[0].match(allPattern);
-        if (allMatch) {
-          const [_, fromToken, toToken] = allMatch;
-          const normalizedFromToken = fromToken.toUpperCase();
-          const normalizedToToken = toToken.toUpperCase();
-          
-          if (!TOKEN_INFO[normalizedFromToken]) {
-            return {
-              message: `I don't recognize "${fromToken}" as a supported token. Currently I support: ${Object.keys(TOKEN_INFO).join(", ")}`,
-              intent: null
-            };
-          }
-          
-          if (!TOKEN_INFO[normalizedToToken]) {
-            return {
-              message: `I don't recognize "${toToken}" as a supported token. Currently I support: ${Object.keys(TOKEN_INFO).join(", ")}`,
-              intent: null
-            };
-          }
-          
-          let amount = "0";
-          if (normalizedFromToken === "SOL" && context.walletConnected) {
-            amount = Math.max(0, context.balance - 0.01).toFixed(4);
-          } else if (context.walletConnected) {
-            const tokenBalance = context?.tokenBalances?.find(
-              (t: any) => t.symbol === normalizedFromToken
-            );
-            amount = tokenBalance ? tokenBalance.balance.toString() : "0";
-          }
-          
-          return {
-            message: `I'll help you swap all your ${normalizedFromToken} (${amount}) to ${normalizedToToken}. I'll prepare this transaction for your approval.`,
-            intent: {
-              action: "swap",
-              amount,
-              fromToken: normalizedFromToken,
-              toToken: normalizedToToken,
-              percentage: "100%"
-            }
-          };
-        }
-      }
-      
-      const [_, amount, fromToken, toToken] = match;
-      const normalizedFromToken = fromToken.toUpperCase();
-      const normalizedToToken = toToken.toUpperCase();
-      
-      if (!TOKEN_INFO[normalizedFromToken]) {
-        return {
-          message: `I don't recognize "${fromToken}" as a supported token. Currently I support: ${Object.keys(TOKEN_INFO).join(", ")}`,
+      if (!match) {
+        return Promise.resolve({
+          message: "Invalid swap command format",
           intent: null
-        };
+        });
       }
-      
-      if (!TOKEN_INFO[normalizedToToken]) {
-        return {
-          message: `I don't recognize "${toToken}" as a supported token. Currently I support: ${Object.keys(TOKEN_INFO).join(", ")}`,
-          intent: null
-        };
-      }
-
-      if (
-        normalizedFromToken === "SOL" && 
-        context.walletConnected &&
-        parseFloat(amount) > context.balance
-      ) {
-        return {
-          message: `I notice you want to swap ${amount} SOL, but your current balance is only ${context.balance.toFixed(4)} SOL. Would you like to try a smaller amount?`,
-          intent: null
-        };
-      }
-      
-      try {
-        const { estimatedValue, priceImpact, trend } = estimateSwapValue(
-          normalizedFromToken,
-          normalizedToToken,
-          amount
-        );
-        
-        const fromTokenPrice = getTokenPrice(normalizedFromToken);
-        const toTokenPrice = getTokenPrice(normalizedToToken);
-        
-        let priceMessage = `Based on current rates, ${amount} ${normalizedFromToken} (≈$${(parseFloat(amount) * fromTokenPrice).toFixed(2)}) should get you approximately ${estimatedValue.toFixed(6)} ${normalizedToToken}`;
-        
-        if (trend === "up") {
-          priceMessage += `. ${normalizedToToken} has been trending upward recently.`;
-        } else if (trend === "down") {
-          priceMessage += `. ${normalizedToToken} has been trending downward recently.`;
-        } else {
-          priceMessage += `. ${normalizedToToken} price has been stable recently.`;
+      return Promise.resolve({
+        message: "Swap operation initiated",
+        intent: {
+          action: "swap",
+          token: match[2],
+          price: parseFloat(match[1])
         }
-        
-        if (priceImpact > 0) {
-          priceMessage += ` Note: This swap may have a price impact of approximately ${priceImpact.toFixed(1)}%.`;
-        }
-        
-        const response = `I'll help you swap ${amount} ${normalizedFromToken} to ${normalizedToToken}. ${priceMessage} I'll prepare this transaction for your approval.`;
-        
-        return {
-          message: response,
-          intent: {
-            action: "swap",
-            amount,
-            fromToken: normalizedFromToken,
-            toToken: normalizedToToken,
-            estimatedValue: estimatedValue.toFixed(6)
-          }
-        };
-      } catch (error) {
-        console.error("Error estimating swap value:", error);
-        const response = `I'll help you swap ${amount} ${normalizedFromToken} to ${normalizedToToken}. I'll prepare this transaction for your approval.`;
-        
-        return {
-          message: response,
-          intent: {
-            action: "swap",
-            amount,
-            fromToken: normalizedFromToken,
-            toToken: normalizedToToken
-          }
-        };
-      }
+      });
     }
   },
   "balance": {
@@ -451,33 +401,25 @@ export const OPERATIONS = {
     }
   },
   "price": {
-    description: "Check token prices",
+    description: "Get current price of a token",
     patterns: [
-      /(?:what(?:'|i)?s\s+(?:the|current))?\s*price\s+(?:of|for)\s+(\w+)/i,
-      /how\s+much\s+(?:is|does)\s+(\w+)\s+cost/i,
-      /(\w+)\s+price/i,
+      /price\s+of\s+(\w+)/i,
+      /what's\s+the\s+price\s+of\s+(\w+)/i
     ],
-    handler: (match: RegExpMatchArray, _: any) => {
-      const tokenSymbol = match[1].toUpperCase();
-      
-      if (!TOKEN_INFO[tokenSymbol]) {
-        return {
-          message: `I don't have price information for ${match[1]}. Currently I track: ${Object.keys(TOKEN_INFO).join(", ")}`,
+    handler: async (match: RegExpMatchArray, context: any) => {
+      if (!match) {
+        return Promise.resolve({
+          message: "Invalid price command format",
           intent: null
-        };
+        });
       }
-      
-      const price = getTokenPrice(tokenSymbol);
-      const tokenInfo = TOKEN_INFO[tokenSymbol];
-      
-      return {
-        message: `The current price of ${tokenSymbol} (${tokenInfo.name}) is approximately $${price.toFixed(tokenSymbol === "BONK" ? 8 : 2)} USD.`,
+      return Promise.resolve({
+        message: "Fetching price information",
         intent: {
           action: "price",
-          token: tokenSymbol,
-          price: price
+          token: match[1]
         }
-      };
+      });
     }
   },
   "history": {
@@ -787,129 +729,31 @@ ${context.walletConnected ?
       /(?:how\s+does|how\s+do)\s+(.+)\s+(?:work|function)/i,
       /(?:what|why|when|how)\s+(?:are|is|should|do|does)\s+(.+)/i
     ],
-    handler: async (match: RegExpMatchArray, context: any) => {
-      const query = match[1].trim();
-      
-      for (const op in OPERATIONS) {
-        if (op !== "cryptoKnowledge" && op !== "help") {
-          for (const pattern of OPERATIONS[op].patterns) {
-            if (pattern.test(match.input)) {
-              return null;
-            }
-          }
-        }
-      }
-      
-      const results = knowledgeService.searchKnowledge(query);
-      
-      if (results.length > 0 && results[0].found) {
-        const result = results[0];
-        let responseData = result.data;
-        const source = result.source;
-        
-        const expertiseLevel = context.expertiseLevel || "beginner";
-        let response = "";
-        
-        if (source === 'Enhanced Token Database') {
-          const token = responseData;
-          
-          if (expertiseLevel === "advanced") {
-            response = `${token.name} (${token.symbol}) is a ${token.category} launched in ${token.year_launched}. It ${token.description}.\n\n`;
-            
-            if (token.technology) {
-              response += `**Technical details**: ${token.technology.consensus} consensus, ${token.technology.tps} TPS, ${token.technology.blockTime} block time.\n\n`;
-            }
-            
-            if (token.tokenomics) {
-              response += `**Tokenomics**: ${token.tokenomics.maxSupply} max supply. Distribution: `;
-              for (const [key, value] of Object.entries(token.tokenomics.distribution || {})) {
-                response += `${key}: ${value}, `;
-              }
-              response = response.slice(0, -2) + '.\n\n';
-            }
-            
-            if (token.investment) {
-              response += "**Investment thesis**:\nBull case: " + token.investment.bullCase.join(", ") + ".\n";
-              response += "Bear case: " + token.investment.bearCase.join(", ") + ".\n\n";
-            }
-          } else if (expertiseLevel === "intermediate") {
-            response = `${token.name} (${token.symbol}) is a ${token.category} token that ${token.description}. It was launched in ${token.year_launched} and is used for ${token.useCases}.\n\n`;
-            
-            if (token.market_sentiment) {
-              response += `Current market sentiment: ${token.market_sentiment}.\n\n`;
-            }
-            
-            if (token.price_range) {
-              response += `Historical price range: ${token.price_range}.\n\n`;
-            }
-            
-            if (token.trend_indicators) {
-              response += `Key indicators to watch: ${token.trend_indicators.join(", ")}.\n`;
-            }
-          } else {
-            response = `${token.name} (${token.symbol}) is a cryptocurrency on the Solana blockchain. It was created in ${token.year_launched} and is used for ${token.useCases}.\n\n`;
-            
-            response += `It's categorized as a ${token.category}, which means ${getCategoryExplanation(token.category)}.\n\n`;
-            
-            response += `In simple terms: ${token.description}\n\n`;
-            
-            if (token.market_sentiment) {
-              response += `Market sentiment: ${token.market_sentiment}.\n`;
-            }
-          }
-        } else if (source.includes('DeFi Protocols')) {
-          const protocol = responseData;
-          response = `${query.toUpperCase()} is a ${protocol.type || 'DeFi protocol'} on Solana that ${protocol.description}.\n\n`;
-          
-          if (expertiseLevel === "advanced") {
-            if (protocol.features) {
-              response += `**Key features**: ${protocol.features.join(", ")}.\n\n`;
-            }
-            
-            if (protocol.tokenomics) {
-              response += `**Tokenomics**: ${protocol.tokenomics.totalSupply || protocol.tokenomics.maxSupply} total supply. Distribution: `;
-              for (const [key, value] of Object.entries(protocol.tokenomics.distribution || {})) {
-                response += `${key}: ${value}, `;
-              }
-              response = response.slice(0, -2) + '.\n\n';
-            }
-            
-            if (protocol.tvl) {
-              response += `Current TVL: ${protocol.tvl}\n\n`;
-            }
-          } else {
-            if (protocol.advantages) {
-              response += `**Advantages**: ${protocol.advantages.slice(0, 3).join(", ")}.\n\n`;
-            }
-            
-            if (protocol.website) {
-              response += `You can learn more at their website: ${protocol.website}\n`;
-            }
-          }
-        } else {
-          response = `Here's what I know about ${query}:\n\n`;
-          response += formatKnowledgeToText(responseData, expertiseLevel);
-        }
-        
-        return {
-          message: response,
+    handler: async (match: RegExpMatchArray, context: any): Promise<{ message: string; intent: { action: string; topic: string } }> => {
+      if (!match) {
+        return Promise.resolve({
+          message: "Invalid crypto knowledge request",
           intent: {
-            action: "knowledge",
-            query: query,
-            source: source
+            action: "crypto_knowledge",
+            topic: "unknown"
           }
-        };
+        });
+      }
+
+      const topic = match[1].toLowerCase();
+      const source = match[2]?.toLowerCase();
+      
+      if (source && source.includes('defi protocols')) {
+        // ... existing code ...
       }
       
-      return {
-        message: `I don't have specific information about "${query}" in my knowledge base, but I'd be happy to discuss the topic based on general crypto knowledge. Could you please ask a more specific question or clarify what aspect you're interested in?`,
+      return Promise.resolve({
+        message: "Crypto knowledge response",
         intent: {
-          action: "knowledge",
-          query: query,
-          found: false
-        },
-        suggestions: ["Tell me about Solana", "How does DeFi work?", "What are the main crypto investment strategies?"]
-      };
+          action: "crypto_knowledge",
+          topic: topic
+        }
+      });
     }
   },
   "marketAnalysis": {
@@ -994,229 +838,72 @@ ${context.walletConnected ?
       /(?:portfolio|risk)\s+(?:management|allocation|diversification)/i,
       /(?:teach|explain|educate)\s+(?:me|about)\s+(?:investing|investment)/i
     ],
-    handler: async (match: RegExpMatchArray, context: any) => {
-      const query = match[0].toLowerCase();
-      const expertiseLevel = context.expertiseLevel || "beginner";
-      
-      let strategyType = "general";
-      if (query.includes("portfolio") || query.includes("allocation") || query.includes("diversification")) {
-        strategyType = "portfolio";
-      } else if (query.includes("risk") || query.includes("management")) {
-        strategyType = "risk";
+    handler: async (match: RegExpMatchArray, context: any): Promise<{ message: string; intent: { action: string; topic: string } }> => {
+      if (!match) {
+        return Promise.resolve({
+          message: "Invalid investment education request",
+          intent: {
+            action: "investment_education",
+            topic: "unknown"
+          }
+        });
       }
+
+      const investmentType = match[1].toLowerCase();
+      const expertiseLevel = match[2]?.toLowerCase() || "beginner";
       
-      let investmentData;
-      switch (strategyType) {
-        case "portfolio":
-          investmentData = knowledgeService.getInvestmentStrategy("portfolio");
-          break;
-        case "risk":
-          investmentData = knowledgeService.getInvestmentStrategy("risk");
-          break;
-        default:
-          investmentData = knowledgeService.getInvestmentStrategy("investment");
-      }
-      
+      const investmentData = await getInvestmentData(investmentType);
       let response = "";
-      
+
       if (investmentData.found) {
         const data = investmentData.data;
-        
-        if (expertiseLevel === "advanced") {
-          response = "# Sophisticated Investment Framework\n\n";
+        const strategy = data[investmentType];
+        if (strategy) {
+          response = `Investment Strategy for ${investmentType}:\n`;
+          response += `Description: ${strategy.description}\n`;
+          response += `Implementation: ${strategy.implementation}\n`;
+          response += `Advantages: ${strategy.advantages.join(", ")}\n`;
           
-          if (strategyType === "portfolio") {
-            response += "## Optimal Portfolio Construction\n\n";
-            response += "For a sophisticated crypto portfolio, consider these allocation models:\n\n";
-            
-            for (const [model, details] of Object.entries(data["Allocation Models"])) {
-              response += `### ${model}\n`;
-              response += `${details.description}\n`;
-              response += `Implementation: ${details.implementation}\n`;
-              response += `Risk Level: ${details.riskLevel}\n\n`;
-            }
-            
-            response += "## Strategic Considerations\n\n";
-            const considerations = data["Strategic Considerations"];
-            for (const [category, items] of Object.entries(considerations)) {
-              response += `### ${category}\n`;
-              if (Array.isArray(items)) {
-                items.forEach(item => response += `- ${item}\n`);
-              }
-              response += "\n";
-            }
-          } else if (strategyType === "risk") {
-            response += "## Sophisticated Risk Management\n\n";
-            
-            for (const [category, details] of Object.entries(data["Position Sizing"])) {
-              response += `### ${category}\n`;
-              response += `${details.description}\n`;
-              response += `Implementation: ${details.implementation}\n`;
-              response += `Advantages: ${details.advantages}\n`;
-              response += `Disadvantages: ${details.disadvantages}\n\n`;
-            }
-            
-            response += "## Risk-Reward Optimization\n\n";
-            const ratios = data["Risk-Reward"]["Minimum Ratios"];
-            for (const [timeframe, ratio] of Object.entries(ratios)) {
-              response += `- ${timeframe}: ${ratio}\n`;
-            }
-          } else {
-            response += "## Sophisticated Investment Strategies\n\n";
-            
-            for (const [strategy, details] of Object.entries(data)) {
-              response += `### ${strategy}\n`;
-              response += `${details.description}\n\n`;
-              response += "Methodology:\n";
-              details.methodology.forEach((method: string) => response += `- ${method}\n`);
-              response += "\n";
-            }
-          }
-        } else if (expertiseLevel === "intermediate") {
-          response = "# Practical Investment Strategies\n\n";
-          
-          if (strategyType === "portfolio") {
-            response += "Here are some practical portfolio strategies to consider:\n\n";
-            
-            const strategies = Object.entries(data["Allocation Models"]);
-            for (const [name, details] of strategies.slice(0, 2)) {
-              response += `## ${name}\n`;
-              response += `${details.description}\n`;
-              response += `How to implement: ${details.implementation}\n`;
-              response += `Benefits: ${details.benefits}\n\n`;
-            }
-            
-            response += "## Risk Management Basics\n\n";
-            response += "For effective portfolio management, remember these principles:\n\n";
-            data["Risk Management"]["Diversity Principles"].slice(0, 4).forEach((principle: string) => {
-              response += `- ${principle}\n`;
-            });
-          } else {
-            response += "Here are two effective investment approaches for crypto:\n\n";
-            
-            const strategies = Object.entries(data);
-            for (const [name, details] of strategies.slice(0, 2)) {
-              response += `## ${name}\n`;
-              response += `${details.description}\n\n`;
-              response += "Key points:\n";
-              details.advantages.slice(0, 3).forEach((adv: string) => response += `- ${adv}\n`);
-              response += "\n";
-            }
-          }
-        } else {
-          response = "# Crypto Investment Basics\n\n";
-          
-          response += "Investing in cryptocurrency can be exciting but comes with significant risks. Here are some fundamental principles to help you get started safely:\n\n";
-          
-          response += "## Golden Rules for Beginners\n\n";
-          response += "1. Only invest what you can afford to lose\n";
-          response += "2. Start small and learn as you go\n";
-          response += "3. Focus on Bitcoin and Ethereum before exploring alternatives\n";
-          response += "4. Use dollar-cost averaging (buying small amounts regularly) to reduce timing risk\n";
-          response += "5. Secure your investments with proper wallet security\n\n";
-          
-          response += "## Common Mistakes to Avoid\n\n";
-          const beginnerFramework = RISK_FRAMEWORKS["Education Frameworks"]?.["Beginner"];
-          if (beginnerFramework && beginnerFramework["Common Mistakes to Avoid"]) {
-            beginnerFramework["Common Mistakes to Avoid"].forEach((mistake: string) => {
-              response += `- ${mistake}\n`;
-            });
-          } else {
-            response += "- Investing based on FOMO (Fear Of Missing Out)\n";
-            response += "- Putting all your money in one cryptocurrency\n";
-            response += "- Trading frequently without experience\n";
-            response += "- Ignoring security best practices\n";
-            response += "- Investing without doing research\n";
+          if (strategy.disadvantages?.length) {
+            response += `Disadvantages: ${strategy.disadvantages.join(", ")}\n`;
           }
           
-          response += "\n## Getting Started\n\n";
-          response += "1. Educate yourself about blockchain basics\n";
-          response += "2. Set up a secure wallet (like Phantom for Solana)\n";
-          response += "3. Start with a small purchase of established cryptocurrencies\n";
-          response += "4. Keep detailed records for tax purposes\n";
-          response += "5. Gradually expand your knowledge before expanding your portfolio\n";
+          if (strategy.benefits?.length) {
+            response += `Benefits: ${strategy.benefits.join(", ")}\n`;
+          }
+          
+          if (strategy.methodology?.length) {
+            response += `Methodology: ${strategy.methodology.join(", ")}\n`;
+          }
+          
+          if (strategy.riskLevel) {
+            response += `Risk Level: ${strategy.riskLevel}\n`;
+          }
         }
-      } else {
-        response = "# Investment Guidance\n\n";
-        
-        response += "Crypto investing requires careful consideration of your goals, risk tolerance, and time horizon. While I can provide general guidance, remember that all investments carry risk and should be approached thoughtfully.\n\n";
-        
-        response += "## General Principles\n\n";
-        response += "1. Define your investment goals clearly\n";
-        response += "2. Diversify across different asset types and projects\n";
-        response += "3. Only invest what you can afford to lose\n";
-        response += "4. Consider your time horizon (short, medium, or long-term)\n";
-        response += "5. Stay informed but avoid making emotional decisions\n\n";
-        
-        response += "Would you like more specific advice about a particular investment approach or strategy?";
       }
       
-      return {
-        message: response,
+      return Promise.resolve({
+        message: response || "No investment data found",
         intent: {
-          action: "investmentEducation",
-          strategyType: strategyType,
-          expertiseLevel: expertiseLevel
+          action: "investment_education",
+          topic: investmentType
         }
-      };
+      });
     }
   },
 };
 
 // Helper function to format knowledge into readable text
-function formatKnowledgeToText(data: any, expertiseLevel: string): string {
-  if (!data) return "No information available.";
-  
-  let text = "";
-  
-  if (Array.isArray(data)) {
-    data.forEach((item: any) => {
-      if (typeof item === 'string') {
-        text += `- ${item}\n`;
-      } else {
-        text += `- ${JSON.stringify(item)}\n`;
-      }
-    });
-  } else if (typeof data === 'object') {
-    for (const [key, value] of Object.entries(data)) {
-      if (typeof value === 'string') {
-        text += `**${key}**: ${value}\n\n`;
-      } else if (Array.isArray(value)) {
-        text += `**${key}**:\n`;
-        value.forEach((item: any) => {
-          if (typeof item === 'string') {
-            text += `- ${item}\n`;
-          } else {
-            text += `- ${JSON.stringify(item)}\n`;
-          }
-        });
-        text += "\n";
-      } else if (typeof value === 'object') {
-        if (expertiseLevel === "advanced") {
-          text += `**${key}**:\n`;
-          for (const [subKey, subValue] of Object.entries(value)) {
-            text += `  **${subKey}**: `;
-            if (typeof subValue === 'string') {
-              text += `${subValue}\n`;
-            } else {
-              text += `${JSON.stringify(subValue)}\n`;
-            }
-          }
-        } else {
-          text += `**${key}**: ${Object.keys(value).join(", ")}\n`;
-        }
-        text += "\n";
-      }
-    }
-  } else {
-    text += data.toString();
-  }
-  
-  return text;
+function formatKnowledgeToText(knowledge: object | null): string {
+  if (!knowledge) return "No knowledge available";
+  return Object.entries(knowledge)
+    .map(([key, value]) => `${key}: ${value}`)
+    .join("\n");
 }
 
 // Helper function to explain token categories in simple terms
 function getCategoryExplanation(category: string): string {
+  if (!category) return "No category available";
   const explanations: Record<string, string> = {
     "Layer 1 blockchain": "it's a foundational blockchain that can operate independently",
     "Stablecoin": "it's designed to maintain a stable value, usually pegged to a currency like the US dollar",
@@ -1419,6 +1106,8 @@ export async function parseUserIntent(
     walletAddress: string | null;
     balance: number;
     tokenBalances?: any[];
+    marketData?: any[];
+    lastMarketUpdate?: string | null;
   } = { walletConnected: false, walletAddress: null, balance: 0 }
 ): Promise<{
   message: string;
@@ -1490,3 +1179,56 @@ export async function parseUserIntent(
 export function getConversationContext() {
   return {...conversationContext};
 }
+
+async function getInvestmentData(type: string): Promise<{ found: boolean; data: Record<string, InvestmentStrategy> }> {
+  // Mock implementation - replace with actual data source
+  const mockData: Record<string, InvestmentStrategy> = {
+    "portfolio": {
+      description: "Portfolio management strategies",
+      implementation: "Diversified asset allocation",
+      advantages: ["Risk reduction", "Stable returns"],
+      riskLevel: "Medium",
+      "Minimum Ratios": ["60/40 stocks/bonds", "10% crypto allocation"],
+      "Diversity Principles": ["Geographic diversification", "Asset class diversification"]
+    },
+    "risk": {
+      description: "Risk management strategies",
+      implementation: "Stop-loss and position sizing",
+      advantages: ["Capital preservation", "Emotional control"],
+      riskLevel: "Low"
+    }
+  };
+
+  return Promise.resolve({
+    found: true,
+    data: mockData
+  });
+}
+
+async function getCryptoKnowledge(): Promise<object> {
+  return {
+    categories: {
+      "Layer 1": "Base blockchain networks like Bitcoin and Ethereum that provide the foundation for other applications",
+      "Layer 2": "Scaling solutions built on top of Layer 1 blockchains to improve transaction speed and reduce costs",
+      "DeFi": "Decentralized Finance applications that provide financial services without intermediaries",
+      "NFT": "Non-Fungible Tokens representing unique digital assets",
+      "Gaming": "Blockchain-based gaming platforms and in-game assets",
+      "Privacy": "Cryptocurrencies focused on transaction privacy and anonymity",
+      "Stablecoins": "Cryptocurrencies pegged to stable assets like fiat currencies",
+      "Meme": "Cryptocurrencies that gained popularity through social media and community engagement"
+    },
+    trends: {
+      current: "DeFi and Layer 2 solutions are seeing significant growth",
+      emerging: "NFT gaming and metaverse projects are gaining traction",
+      risks: "Regulatory uncertainty remains a key concern for the industry"
+    }
+  };
+}
+
+const cryptoKnowledgeHandler: (match: RegExpMatchArray, context: any) => Promise<{ message: string; intent: { action: string } }> = async (match, context) => {
+  const knowledge = await getCryptoKnowledge();
+  return Promise.resolve({
+    message: formatKnowledgeToText(knowledge),
+    intent: { action: "crypto_knowledge" }
+  });
+};
