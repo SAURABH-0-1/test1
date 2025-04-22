@@ -128,7 +128,7 @@ const ChatMessage = ({ message, isLast }: { message: AIMessage; isLast: boolean 
 
 // Main ChatInterface component
 export function ChatInterface() {
-  const { publicKey, signTransaction, connected } = useWallet()
+  const wallet = useWallet()
   const { connection } = useConnection()
   const { walletData, setWalletAddress } = useWalletStore()
   const [messages, setMessages] = useState<AIMessage[]>([
@@ -274,21 +274,21 @@ export function ChatInterface() {
 
   // Set wallet address when connected
   useEffect(() => {
-    if (publicKey) {
-      setWalletAddress(publicKey.toString())
+    if (wallet.publicKey) {
+      setWalletAddress(wallet.publicKey.toString())
     }
-  }, [publicKey, connected, setWalletAddress])
+  }, [wallet.publicKey, wallet.connected, setWalletAddress])
 
   // Display welcome message when wallet is connected
   useEffect(() => {
-    if (connected && publicKey) {
+    if (wallet.connected && wallet.publicKey) {
       // Only add welcome message if it doesn't exist yet
       if (!messages.some((m) => m.content.includes("wallet is connected"))) {
         setMessages((prev) => [
           ...prev,
           {
             role: "assistant",
-            content: `Great! Your wallet is connected. Your address is ${formatWalletAddress(publicKey.toString())}. How can I assist you with your Solana transactions?`,
+            content: `Great! Your wallet is connected. Your address is ${formatWalletAddress(wallet.publicKey!.toString())}. How can I assist you with your Solana transactions?`,
           },
         ])
       }
@@ -304,7 +304,7 @@ export function ChatInterface() {
         ])
       }
     }
-  }, [connected, publicKey, walletData, messages])
+  }, [wallet.connected, wallet.publicKey, walletData, messages])
 
   // Auto-grow textarea as user types
   useEffect(() => {
@@ -367,7 +367,7 @@ export function ChatInterface() {
 
   // Add a function to handle the test transfer of SOL with customizable amount
   const testTransfer = async (amount = 0.00001, recipient = "6WPC5CuugBaBHAjbBuo1qfzVTyieE53D6tC2LQ5g27cG") => {
-    if (!publicKey || !signTransaction || !connected) {
+    if (!wallet.publicKey || !wallet.signTransaction || !wallet.connected) {
       setMessages((prev) => [
         ...prev,
         { 
@@ -403,7 +403,7 @@ export function ChatInterface() {
     try {
       // Execute the transfer using the existing TokenTransferService
       const result = await TokenTransferService.transferTokens(
-        { publicKey, signTransaction, connected },
+        wallet,
         recipient,
         amount,
         "SOL"
@@ -615,8 +615,8 @@ export function ChatInterface() {
 
       // If not a market query or no market data available, proceed with the regular AI
       const aiResponse = await parseUserIntent(userMessage, {
-        walletConnected: connected,
-        walletAddress: publicKey?.toString() || null,
+        walletConnected: wallet.connected,
+        walletAddress: wallet.publicKey?.toString() || null,
         balance: walletData.solBalance || 0,
         marketData: marketData, // Pass market data to the AI
         lastMarketUpdate: lastMarketUpdate ? lastMarketUpdate.toISOString() : null,
@@ -738,14 +738,14 @@ export function ChatInterface() {
   }
 
   const executeTransfer = async (intent: any) => {
-    if (!intent || !publicKey) {
+    if (!intent || !wallet.publicKey) {
       console.error("Cannot execute transfer: missing intent or wallet not connected")
       return
     }
 
     try {
       const result = await TokenTransferService.transferTokens(
-        { publicKey, signTransaction, connected },
+        wallet,
         intent.recipient,
         intent.amount,
         intent.token,
@@ -823,7 +823,7 @@ export function ChatInterface() {
             <div>
               <h2 className="font-medium">AI Assistant</h2>
               <p className="text-xs text-muted-foreground">
-                {connected ? `Connected to ${formatWalletAddress(publicKey!.toString())}` : "Wallet not connected"}
+                {wallet.connected ? `Connected to ${formatWalletAddress(wallet.publicKey!.toString())}` : "Wallet not connected"}
                 {marketDataLoaded && (
                   <span className="ml-2">
                     • Market data: <span className="text-green-500">Live</span>
